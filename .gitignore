@@ -1,0 +1,30 @@
+*.d
+*.o
+*.so.*
+*.a
+*.bin
+*.elf
+\#*
+.\#*
+*~
+*.log
+
+# uic's headers
+ui_*.h
+
+# build directory
+build
+rootfs
+
+# netbeans, intellij, eclipse project files
+nbproject
+netbeans
+.idea/
+.project
+.cproject
+.settings
+
+*.pro.user
+.qmake.stash
+/*.dsc
+/*.tar.gz

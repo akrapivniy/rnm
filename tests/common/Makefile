@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -Winline -pipe -I../../include -I../../librnm  -Wno-multichar
-LIBS =  -L../../librnm -lpthread  -lrnm -lrn -lconfig
+CFLAGS = -Wall -Winline -pipe -I../../include -I../../librnm  -Wno-multichar -Wformat-truncation=0
+LIBS =  -L../../librnm -pthread  -lrnm -lrn -lconfig
 
 all:rnmlib rnm-test-server rnm-test-client rnm-test-monitor
 

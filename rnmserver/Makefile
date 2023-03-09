@@ -1,5 +1,9 @@
-CC      = gcc
-LD      = gcc
+ifndef CC
+CC = gcc
+endif
+ifndef LD
+LD = gcc
+endif
 
 SOURCES=rnmserver.c
 OBJECTS=$(SOURCES:.c=.o)
@@ -12,7 +16,7 @@ rnmlib:
 	$(MAKE) -C ../librnm
 
 rnmserver: $(OBJECTS)
-	$(LD)  $(OBJECTS) -o $@.bin $(LDFLAGS)
+	$(CC)  $(OBJECTS) -o $@.bin $(LDFLAGS)
 
 .o:  $(SOURCES)
 	$(CC) -I./ -c $(CFLAGS) $< 

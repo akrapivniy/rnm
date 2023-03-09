@@ -1,3 +1,20 @@
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ ***************************************************************/
+
 #include <stdio.h>
 #include <rnm-client.h>
 #include <stdint.h>
@@ -7,26 +24,6 @@
 
 #define MODULE_NAME "rnm-test-client"
 #include <rnm-debug.h>
-
-void server_cb(void *args, char *id, void *data, int size)
-{
-	struct timespec time;
-	int *mode = (int *) data;
-	struct rnm_connect *s = args;
-	int client_count = 0;
-
-	clock_gettime(CLOCK_REALTIME, &time);
-	rtsd_debug("event %d from client at %lu:%lu", *mode, time.tv_sec, time.tv_nsec);
-
-	rnm_write(s, RNM_TYPE_VAR_INT, "client_count", &client_count, 4);
-	rnm_write(s, RNM_TYPE_VAR_INT | RNM_TYPE_ECHO, "client_echo_count", &client_count, 4);
-	client_count++;
-}
-
-void client_echo_cb(void *args, char *id, void *data, int size)
-{
-	rtsd_debug("server gets event");
-}
 
 void client_cb(void *args, char *id, void *data, int size)
 {
@@ -62,14 +59,13 @@ int main()
 	
 	while (1) {
 		rtsd_debug("connecting to %s", ipaddress);
-		s = rnm_connect((char *) ipaddress, 4444, "client1");
-		rnm_subscribe_event(s, RNM_TYPE_VAR_INT, "server_count", server_cb, s);
-		rnm_subscribe_event(s, RNM_TYPE_VAR_INT, "client_echo_count", client_echo_cb, s);
-		rnm_subscribe_event(s, RNM_TYPE_VAR_INT, "client_count", client_cb, s);
+		s = rnm_connect((char *) ipaddress, 4444, "test_client", NULL, NULL);
+		rnm_subscribe_event(s, RNM_TYPE_VAR_INT, "count", client_cb, s);
 		rnm_channel_anons (s, "debug", 0, 5555);
 
 		for (i = 0; i < 10; i++) {
-			rnm_getvar_int(s, 0, "server_count", &server_count);
+			rnm_setvar_int(s, 0, "count", 0);
+			rnm_getvar_int(s, 0, "count", &server_count);
 			rtsd_debug("read value %d", server_count);
 			sleep(1);
 		}

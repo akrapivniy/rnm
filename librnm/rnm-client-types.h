@@ -1,13 +1,12 @@
 /**************************************************************
-* (C) Copyright 2017
-* RTSoft
-* Russia
-* All rights reserved.
-*
-* Description: Library of network variables and channels
-* Author: Alexander Krapivniy (akrapivny@dev.rtsoft.ru)
-***************************************************************/
-
+ * (C) Copyright 2017
+ * Motherson Innvations
+ * Germany
+ * All rights reserved.
+ *
+ * Description: Library of network variables and channels
+ * Author: Alexander Krapivniy (alexander.krapivnyy@motherson-innovations.com)
+ ***************************************************************/
 #ifndef __RNM_CLIENT_TYPES__
 #define __RNM_CLIENT_TYPES__
 
@@ -35,14 +34,22 @@ extern "C" {
 		char addr[20];
 		int port;
 		int socketfd;
+		int usocketfd;
 		pthread_t thread;
 		uint8_t read_data[RNM_VARIABLE_SIZE_MAXIMUM];
 		int onexit;
+		int ready;
+		int connect_wait;
+		pthread_mutex_t connect_mutex;
+		pthread_cond_t connect_cond;
+
 		int read_size;
 		rnmid_t read_id;
 		int read_wait;
 		pthread_mutex_t read_mutex;
 		pthread_cond_t read_cond;
+                struct sockaddr_in saddr;
+                int saddr_size;
 
 		struct rnm_channel_ticket ticket_data;
 		rnmid_t ticket_id;

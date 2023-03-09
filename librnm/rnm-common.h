@@ -1,13 +1,19 @@
-/**************************************************************
-* (C) Copyright 2017
-* RTSoft
-* Russia
-* All rights reserved.
-*
-* Description: Library of network variables and channels
-* Author: Alexander Krapivniy (akrapivny@dev.rtsoft.ru)
-***************************************************************/
-
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ ***************************************************************/
 #ifndef __RNM_COMMON__
 #define __RNM_COMMON__
 
@@ -77,6 +83,32 @@ static __attribute__((always_inline)) inline int rnm_get_size_by_type(int type)
 	case RNM_TYPE_VAR_LONG: return 8;
 	}
 	return 0;
+}
+
+static __attribute__((always_inline)) inline void rnm_fill_header (struct rnm_header *p, rnmid_t *id, uint32_t type)
+{
+        rnm_idcpy(&p->id, id);
+        p->magic = RNM_PACKET_MAGIC;
+        p->magic_data = RNM_PACKET_MAGIC_DATA;
+        p->type = type;
+}
+
+static __attribute__((always_inline)) inline void rnm_fill_header_request_str (struct rnm_header *p, const char *cid, uint32_t type)
+{
+        rnm_idstr(&p->id, cid);
+        p->magic = RNM_PACKET_MAGIC;
+        p->magic_data = RNM_PACKET_MAGIC_DATA;
+        p->data_size = 0;
+        p->type = type;
+}
+
+static __attribute__((always_inline)) inline void rnm_fill_header_request_id (struct rnm_header *p, rnmid_t *id, uint32_t type)
+{
+        rnm_idcpy(&p->id, id);
+        p->magic = RNM_PACKET_MAGIC;
+        p->magic_data = RNM_PACKET_MAGIC_DATA;
+        p->data_size = 0;
+        p->type = type;
 }
 
 #ifdef __cplusplus

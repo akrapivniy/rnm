@@ -1,13 +1,19 @@
-/**************************************************************
-* (C) Copyright 2017
-* RTSoft
-* Russia
-* All rights reserved.
-*
-* Description: Server of network variables
-* Author: Alexander Krapivniy (akrapivny@dev.rtsoft.ru)
-***************************************************************/
-
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ ***************************************************************/
 #include <stdio.h>
 #include <libconfig.h>
 #include <string.h>
@@ -22,13 +28,12 @@
 #include <rnm-server.h>
 #include <rnm-client.h>
 
-struct dbx_control {
+struct rnm_control {
 	struct rnm_server *server;
 	struct rnm_connect *client;
 };
 
-
-int dbx_register_variables(struct dbx_control *d, config_t *cfg)
+int rnm_register_variables(struct rnm_control *d, config_t *cfg)
 {
 	config_setting_t *dbx_variables_list, *dbx_variable;
 	int variable_count = 0;
@@ -104,6 +109,7 @@ int dbx_register_variables(struct dbx_control *d, config_t *cfg)
 		case RNM_TYPE_VAR_STRING:
 			if (config_setting_lookup_string(dbx_variable, "value", &value_str)) {
 				strcpy(str, value_str);
+				size = strlen(str);
 				rtsd_info("register %d variable %s type string %s size %d value %s", variable_count, name, type, size, str);
 				rnm_server_define(d->server, name, flags, str, size);
 				continue;
@@ -130,7 +136,7 @@ int timespec2str(char *buf, int len, struct timespec *ts)
 		return 2;
 	len -= ret - 1;
 
-	ret = snprintf(&buf[strlen(buf)], len, ".%06ld", ts->tv_nsec/1000);
+	ret = snprintf(&buf[strlen(buf)], len, ".%06ld", ts->tv_nsec / 1000);
 	if (ret >= len)
 		return 3;
 
@@ -148,11 +154,11 @@ static const char *short_options = "sc:i:";
 int main(int argc, char** argv)
 {
 	config_t cfg;
-	struct dbx_control dbx;
+	struct rnm_control dbx;
 	int server_port = 4444;
 	int silent_mode = 0;
 
-	char config_include_dir[255] = "../configs", config_filename[255] = "../configs/dbx_main.cfg";
+	char config_include_dir[255] = ".", config_filename[255] = "./rnm_config";
 	int long_index;
 	int opt = 0;
 	config_init(&cfg);
@@ -183,9 +189,9 @@ int main(int argc, char** argv)
 
 	config_lookup_int(&cfg, "port", &server_port);
 
-	dbx.server = rnm_server_create(NULL, server_port, "Test server");
-	dbx_register_variables(&dbx, &cfg);
-	dbx.client = rnm_connect(NULL, server_port, "rnm server");
+	dbx.server = rnm_server_create(NULL, server_port, "MI-server");
+	rnm_register_variables(&dbx, &cfg);
+	dbx.client = rnm_connect("127.0.0.1", server_port, "rnm server", NULL, NULL);
 
 	while (1) {
 		if (!silent_mode)

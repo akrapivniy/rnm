@@ -1,8 +1,24 @@
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ ***************************************************************/
+
 #include <stdio.h>
 #include <rnm-client.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <libconfig.h>
 #include <time.h>
 
 #define MODULE_NAME "rnm-test-monitor"
@@ -10,9 +26,6 @@
 
 int main()
 {
-	config_t cfg;
-	const char *ipaddress;
-	char *default_ipaddress = "127.0.0.1";
 	struct rnm_connect *s;
 	int count;
 	struct rnm_event_info *events_info;
@@ -20,20 +33,7 @@ int main()
 	int i;
 	char str[15];
 
-	config_init(&cfg);
-
-	if (!config_read_file(&cfg, "client.config")) {
-		rtsd_error("%s:%d - %s\n", config_error_file(&cfg),
-			config_error_line(&cfg), config_error_text(&cfg));
-		config_destroy(&cfg);
-		return(-1);
-	}
-
-	if (!config_lookup_string(&cfg, "ipaddress", &ipaddress))
-		ipaddress = default_ipaddress;
-
-	rtsd_debug("connecting to %s", ipaddress);
-	s = rnm_connect((char *) ipaddress, 3333, "client1");
+	s = rnm_connect_simple(NULL, 0, "client2");
 
 	while (1) {
 		events_info = rnm_request_eventslist(s, &count, 5);
@@ -69,5 +69,4 @@ int main()
 		sleep(1);
 	}
 
-	config_destroy(&cfg);
 }

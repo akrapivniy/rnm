@@ -1,11 +1,18 @@
-/**************************************************************
- * (C) Copyright 2017
- * RTSoft
- * Russia
- * All rights reserved.
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
  *
- * Description: Application for display list of network variables
- * Author: Alexander Krapivniy (akrapivny@dev.rtsoft.ru)
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  ***************************************************************/
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,20 +38,6 @@
 #define rtsd_debug(fmt,args...)
 
 
-
-volatile int connect_wait = 1;
-pthread_mutex_t mutex;
-pthread_cond_t cond;
-
-void cb(void *args)
-{
-	pthread_mutex_lock(&mutex);
-	connect_wait = 0;
-	pthread_cond_signal(&cond);
-	pthread_mutex_unlock(&mutex);
-}
-
-
 static struct option long_options[] = {
 	{"address", required_argument, 0, 'a'},
 	{"port", required_argument, 0, 'p'},
@@ -58,8 +51,8 @@ static const char *short_options = "hp:a:n:1";
 int main(int argc, char** argv)
 {
 	struct rnm_connect *rnm_server;
-	int port = 4444;
-	char address[32] = "127.0.0.1";
+	int port = 0;
+	char address[32] = "";
 	int count;
 	int i;
 	struct rnm_event_info *events_info;
@@ -106,14 +99,11 @@ int main(int argc, char** argv)
 		}
 	}
 
-	rnm_server = rnm_connect_subscribe(address, port, "rnm-monitor", cb, NULL);
+	rnm_server = rnm_connect_simple(address, port, "rnm-monitor");
+	
 
 	printf("Wait for connect to %s:%d \n", address, port);
-	pthread_mutex_lock(&mutex);
-	while (connect_wait)
-		pthread_cond_wait(&cond, &mutex);
-	pthread_mutex_unlock(&mutex);
-
+	rnm_connect_wait (rnm_server, 30);
 
 	do {
 		events_info = rnm_request_eventslist(rnm_server, &count, 5);
@@ -136,7 +126,9 @@ int main(int argc, char** argv)
 				break;
 			case RNM_TYPE_VAR_DOUBLE: snprintf(str, 15, "%lf", *(double *) events_info[i].short_data);
 				break;
-			case RNM_TYPE_VAR_STRING: snprintf(str, 15, "%s", (char *) events_info[i].short_data);
+			case RNM_TYPE_VAR_STRING: 
+					events_info[i].short_data[events_info[i].data_size] = 0;
+					snprintf(str, 15, "%s", (char *) events_info[i].short_data);
 				break;
 			default: snprintf(str, 10, "not support");
 				break;

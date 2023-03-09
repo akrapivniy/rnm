@@ -1,3 +1,10 @@
+ifndef CC
+CC = gcc
+endif
+ifndef LD
+LD = gcc
+endif
+
 SUBDIRS = librnm rnmserver rnmctrl rnmmon tests
 
 ifndef SOURCES_DIR

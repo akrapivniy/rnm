@@ -1,13 +1,19 @@
-/**************************************************************
-* (C) Copyright 2017
-* RTSoft
-* Russia
-* All rights reserved.
-*
-* Description: Library of network variables and channels
-* Author: Alexander Krapivniy (akrapivny@dev.rtsoft.ru)
-***************************************************************/
-
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ ***************************************************************/
 #ifndef __RNM_SERVER__
 #define __RNM_SERVER__
 
@@ -44,7 +50,7 @@ void rnm_server_stop(struct rnm_server *s);
 void rnm_server_set_sync_offset(struct rnm_server *s, int ms);
 
 void rnm_server_print_event(struct rnm_server * s);
-int rnm_server_ssdp_create (struct rnm_server *s, char *address);
+int rnm_server_ssdp_create (struct rnm_server *s, char *address, int beacon);
 
 
 #ifdef __cplusplus

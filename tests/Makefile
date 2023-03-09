@@ -1,4 +1,4 @@
-SUBDIRS = test1
+SUBDIRS = tools common read perf-event
 
 ifndef SOURCES_DIR
 SOURCES_DIR := $(shell ( pwd -L ) )

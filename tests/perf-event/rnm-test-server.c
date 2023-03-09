@@ -1,3 +1,20 @@
+/**************************************************************  
+ * Description: Library of network variables and channels
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ ***************************************************************/
+
 #include <stdio.h>
 #include <rnm-server.h>
 #include <stdint.h>
@@ -18,6 +35,19 @@ struct client_data {
 	int count;
 	struct timespec time;
 };
+
+int count = 0;
+
+
+void client_cb(void *args, char *id, void *data, int size)
+{
+	int new_count = *(int *)data;
+
+	if (new_count != count + 1)
+				printf ("E");
+	count = new_count;
+}
+
 
 void speed_cb(void *args, char *id, void *data, int size)
 {
@@ -52,27 +82,18 @@ int main()
 		rtsd_error("server create");
 		return -1;
 	}
-	rnm_server_ssdp_create (s, "rnm.com");
+	rnm_server_ssdp_create (s, "rnm.com", 1);
 	rtsd_info("defining variables...");
 	rnm_server_define(s, "client_count", RNM_TYPE_VAR_INT, NULL, 0);
-	rnm_server_define(s, "client_echo_count", RNM_TYPE_VAR_INT, NULL, 0);
 	rnm_server_define(s, "server_count", RNM_TYPE_VAR_INT, NULL,0);
-	rnm_server_define(s, "012345678901234567890123456789123456789012345", RNM_TYPE_VAR_INT, NULL,0);
+	rnm_server_define(s, "client_string", RNM_TYPE_VAR_STRING, NULL,0);
+	rnm_server_subscribe_event (s, RNM_TYPE_VAR_INT, "client_count", client_cb, NULL);
 
-
-	rtsd_info("subscribing enent...");
-	rnm_server_subscribe_event(s, 0, "client_count", speed_cb, s);
-	rnm_server_subscribe_event(s, 0, "012345678901234567890123456789123456789012345", speed_cb, s);
 	rtsd_info("main loop...");
 	while (1) {
-//		rnm_server_print_event (s);
-		rnm_server_write(s, RNM_TYPE_VAR_INT, "server_count", &server_count, 0);
-		rnm_server_getint (s, 0, "server_count", &server_count_copy);
-//		rtsd_info("server count %d : %d", server_count, server_count_copy);
+		sleep (1);
+	//	rnm_server_write(s, RNM_TYPE_VAR_INT, "server_count", &server_count, 0);
 		server_count++;
-		usleep(500000);
 	}
-
-
 	rnm_server_stop(s);
 }

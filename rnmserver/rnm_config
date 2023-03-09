@@ -1,0 +1,7 @@
+ipaddress = "";
+port = 4444;
+
+variables=(
+    {name:"mode";             type:"int";     value:0},
+    {name:"pause";            type:"int";     value:0}
+)

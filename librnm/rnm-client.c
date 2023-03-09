@@ -1,13 +1,19 @@
-/**************************************************************
- * (C) Copyright 2017
- * RTSoft
- * Russia
- * All rights reserved.
- *
+/**************************************************************  
  * Description: Library of network variables and channels
- * Author: Alexander Krapivniy (akrapivny@dev.rtsoft.ru)
+ * Copyright (c) 2022 Alexander Krapivniy (a.krapivniy@gmail.com)
+ * 
+ * This program is free software: you can redistribute it and/or modify  
+ * it under the terms of the GNU General Public License as published by  
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  ***************************************************************/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -26,8 +32,21 @@
 
 #define MODULE_NAME "rnm-client"
 #include <rnm-debug.h>
-#undef rtsd_debug
-#define rtsd_debug(fmt,args...)
+// #undef rtsd_debug
+// #define rtsd_debug(fmt,args...)
+
+extern int rnm_find_server(char *addr, int *port);
+
+int rnm_connect_send(struct rnm_connect *c, void *buffer, int size)
+{
+	if (c->socketfd > 0)
+		return(rn_blocking_send(c->socketfd, buffer, size, MSG_NOSIGNAL));
+	else if (c->usocketfd > 0) {
+		sendto(c->usocketfd, buffer, size, MSG_NOSIGNAL, (struct sockaddr *) &c->saddr, c->saddr_size);
+		return 0;
+	}
+	return -1;
+}
 
 struct rnm_client_event *rnm_get_event(struct rnm_connect *s, rnmid_t *id)
 {
@@ -92,7 +111,7 @@ int rnm_read(struct rnm_connect *s, int flags, const char *cid, void *data, int 
 	packet.header.type = RNM_TYPE_READ;
 	packet.header.type |= flags & RNM_TYPE_VAR_MASK;
 	packet.header.data_size = 0;
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, size);
 
 	if (rnm_wait_for_read(s, 3))
 		return -ETIMEDOUT;
@@ -138,8 +157,10 @@ int rnm_write(struct rnm_connect *s, int flags, const char *cid, void *data, int
 {
 	struct rnm_packet packet;
 	int size = sizeof(struct rnm_header);
+	int ret;
 
-	if (s->socketfd < 0) return -EBADFD;
+	rtsd_debug("data ptr %p", s);
+	//	if (s->socketfd < 0) return -EBADFD;
 	rnm_idstr(&packet.header.id, cid);
 
 	packet.header.magic = RNM_PACKET_MAGIC;
@@ -156,13 +177,14 @@ int rnm_write(struct rnm_connect *s, int flags, const char *cid, void *data, int
 	packet.header.type = flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK);
 	packet.header.type |= RNM_TYPE_WRITE;
 
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	ret = rnm_connect_send(s, &packet, size);
 	rtsd_debug("write [%s] type 0x%08x, data_size %d", cid, packet.header.type, packet.header.data_size);
-	return 0;
+	return ret;
 }
 
 int rnm_setvar_int(struct rnm_connect *s, int flags, const char *id, int data)
 {
+	rtsd_debug("data ptr %p", s);
 	return(rnm_write(s, flags | RNM_TYPE_VAR_INT, id, &data, 0));
 }
 
@@ -186,6 +208,16 @@ int rnm_setvar_str(struct rnm_connect *s, int flags, const char *id, const char 
 	return(rnm_write(s, flags | RNM_TYPE_VAR_STRING, id, (void *) data, strlen(data) + 1));
 }
 
+int rnm_send_command(struct rnm_connect *s, int flags, const char *id, void *data, int data_size)
+{
+	return(rnm_write(s, flags | RNM_TYPE_VAR_COMMAND, id, (void *) data, data_size));
+}
+
+int rnm_send_response(struct rnm_connect *s, int flags, const char *id, void *data, int data_size)
+{
+	return(rnm_write(s, flags | RNM_TYPE_VAR_COMMAND | RNM_TYPE_RESPONSE, id, (void *) data, data_size));
+}
+
 int rnm_event(struct rnm_connect *s, int flags, const char *id)
 {
 	return(rnm_write(s, flags | RNM_TYPE_VAR_EMPTY, id, NULL, 0));
@@ -196,14 +228,11 @@ int rnm_client_send_channel_anons(struct rnm_connect *s, rnmid_t *id, struct rnm
 	struct rnm_packet packet;
 	int size = sizeof(struct rnm_header) + sizeof(struct rnm_channel_ticket);
 
-	rnm_idcpy(&packet.header.id, id);
-	packet.header.magic = RNM_PACKET_MAGIC;
-	packet.header.magic_data = RNM_PACKET_MAGIC_DATA;
-	packet.header.type = RNM_TYPE_CHANNEL | RNM_CHANNEL_ANONS;
+	rnm_fill_header(&packet.header, id, RNM_TYPE_CHANNEL | RNM_CHANNEL_ANONS);
 	packet.header.data_size = sizeof(struct rnm_channel_ticket);
 
 	memcpy(packet.buffer, ticket, sizeof(struct rnm_channel_ticket));
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, size);
 	return 0;
 }
 
@@ -212,14 +241,8 @@ int rnm_define(struct rnm_connect *s, const char *cid, int flags)
 	struct rnm_packet packet;
 	int size = sizeof(struct rnm_header);
 
-	rnm_idstr(&packet.header.id, cid);
-	packet.header.magic = RNM_PACKET_MAGIC;
-	packet.header.magic_data = RNM_PACKET_MAGIC_DATA;
-	packet.header.type = RNM_TYPE_DEFINE;
-	packet.header.type |= flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK);
-	packet.header.data_size = 0;
-
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_fill_header_request_str(&packet.header, cid, RNM_TYPE_DEFINE | (flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK)));
+	rnm_connect_send(s, &packet, size);
 	rtsd_debug("sent define event");
 	return 0;
 }
@@ -229,13 +252,8 @@ int rnm_undefine(struct rnm_connect *s, const char *cid)
 	struct rnm_packet packet;
 	int size = sizeof(struct rnm_header);
 
-	rnm_idstr(&packet.header.id, cid);
-	packet.header.magic = RNM_PACKET_MAGIC;
-	packet.header.magic_data = RNM_PACKET_MAGIC_DATA;
-	packet.header.type = RNM_TYPE_DEFINE;
-	packet.header.data_size = 0;
-
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_fill_header_request_str(&packet.header, cid, RNM_TYPE_DEFINE);
+	rnm_connect_send(s, &packet, size);
 	rtsd_debug("sent undefine event");
 	return 0;
 }
@@ -245,15 +263,10 @@ int rnm_client_send_subscribe(struct rnm_connect *s, rnmid_t *id, int flags, uin
 	struct rnm_packet packet;
 	int size = sizeof(struct rnm_header);
 
-	rnm_idcpy(&packet.header.id, id);
-	packet.header.magic = RNM_PACKET_MAGIC;
-	packet.header.magic_data = RNM_PACKET_MAGIC_DATA;
-	packet.header.type = RNM_TYPE_SUBSCRIBE;
-	packet.header.type |= flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK);
-	packet.header.data_size = 0;
+	rnm_fill_header_request_id(&packet.header, id, RNM_TYPE_SUBSCRIBE | (flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK)));
 	packet.header.update_counter = update_counter;
 
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, size);
 	rtsd_debug("sent subscribe event");
 	return 0;
 }
@@ -263,14 +276,8 @@ int rnm_client_send_unsubscribe(struct rnm_connect *s, rnmid_t *id, int flags)
 	struct rnm_packet packet;
 	int size = sizeof(struct rnm_header);
 
-	rnm_idcpy(&packet.header.id, id);
-	packet.header.magic = RNM_PACKET_MAGIC;
-	packet.header.magic_data = RNM_PACKET_MAGIC_DATA;
-	packet.header.type = RNM_TYPE_UNSUBSCRIBE;
-	packet.header.type |= flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK);
-	packet.header.data_size = 0;
-
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_fill_header_request_id(&packet.header, id, RNM_TYPE_UNSUBSCRIBE | (flags & (RNM_TYPE_VAR_MASK | RNM_TYPE_FLAGS_MASK)));
+	rnm_connect_send(s, &packet, size);
 	rtsd_debug("sent unsubscribe event");
 	return 0;
 }
@@ -279,23 +286,35 @@ int rnm_client_send_id(struct rnm_connect *s, rnmid_t *id)
 {
 	struct rnm_header packet;
 
-	rnm_idcpy(&packet.id, id);
-	packet.magic = RNM_PACKET_MAGIC;
-	packet.magic_data = RNM_PACKET_MAGIC_DATA;
-	packet.type = RNM_TYPE_CLIENT_ID;
-	packet.data_size = 0;
+	rnm_fill_header_request_id(&packet, id, RNM_TYPE_CLIENT_ID);
 	packet.time.tv_sec = RNM_VERSION_MAJOR;
 	packet.time.tv_nsec = RNM_VERSION_MINOR;
 
-	rn_blocking_send(s->socketfd, &packet, sizeof(struct rnm_header), MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, sizeof(struct rnm_header));
 	rtsd_debug("sent client id");
 	return 0;
+}
+
+static void rnm_send_id(struct rnm_connect * s)
+{
+	int i;
+	rnm_client_send_id(s, &s->id);
+	rtsd_debug("send subscribe events");
+	for (i = 0; i < RNM_EVENT_MAXIMUM; i++) {
+		if (s->events[i].id.i[0] != -1)
+			rnm_client_send_subscribe(s, &s->events[i].id, s->events[i].flags, s->events[i].update_counter);
+	}
+	for (i = 0; i < RNM_CHANNEL_MAXIMUM; i++) {
+		if (s->channels[i].id.i[0] != -1)
+			rnm_client_send_channel_anons(s, &s->channels[i].id, &s->channels[i].ticket);
+	}
 }
 
 int rnm_subscribe_event(struct rnm_connect *s, int flags, const char *cid, void (*cb)(void *, char *, void *, int), void *args)
 {
 	int i;
 
+	rtsd_debug("data ptr %p %p ,%s", s, cb,cid);
 	for (i = 0; i < RNM_EVENT_MAXIMUM; i++)
 		if (s->events[i].id.i[0] == -1) {
 			s->events[i].cb = cb;
@@ -336,6 +355,7 @@ void rnm_cb_event(struct rnm_connect *s, struct rnm_header *packet_header)
 	event = rnm_get_event(s, id);
 	if (event != NULL) {
 		cb = event->cb;
+		rtsd_debug("cb = %p", cb);
 		if (cb != NULL)
 			cb(event->args, (char *) &event->id, data, data_size);
 		event->update_counter = update_counter;
@@ -358,6 +378,18 @@ static void rnm_channel_process_packet(struct rnm_connect * s, struct rnm_header
 	}
 }
 
+static void rnm_process_error(struct rnm_connect *s, struct rnm_header *packet_header, char *data)
+{
+	switch (packet_header->update_counter) {
+	case RNM_ERROR_NOTSUPPORT:
+		s->onexit = 1;
+		break;
+	case RNM_ERROR_UNKNOWNCLIENT:
+		rnm_send_id(s);
+		break;
+	}
+}
+
 static void rnm_process_packet(struct rnm_connect * s, struct rnm_header *packet_header, char *data)
 {
 
@@ -373,8 +405,7 @@ static void rnm_process_packet(struct rnm_connect * s, struct rnm_header *packet
 		break;
 	case RNM_TYPE_ERROR:
 		rtsd_error("Server error: %s", packet_header->id.c);
-		if (packet_header->update_counter)
-			s->onexit = 1;
+		rnm_process_error(s, packet_header, data);
 		break;
 	case RNM_TYPE_READ:
 		rtsd_debug("receive read id %s type 0x%08x", packet_header->id.c, packet_header->type);
@@ -463,7 +494,6 @@ void *rnm_connect_cb_thread(void *server)
 static void rnm_recv(struct rnm_connect * s)
 {
 	int socketfd = s->socketfd;
-	int i;
 	fd_set set;
 	int res;
 
@@ -473,22 +503,17 @@ static void rnm_recv(struct rnm_connect * s)
 	int buffer_recv = 0;
 	uint8_t buffer[RNM_CLIENT_BUFFER_SIZE];
 
-	rnm_client_send_id(s, &s->id);
-	rtsd_debug("send subscribe events");
-	for (i = 0; i < RNM_EVENT_MAXIMUM; i++) {
-		if (s->events[i].id.i[0] != -1)
-			rnm_client_send_subscribe(s, &s->events[i].id, s->events[i].flags, s->events[i].update_counter);
-	}
-	for (i = 0; i < RNM_CHANNEL_MAXIMUM; i++) {
-		if (s->channels[i].id.i[0] != -1)
-			rnm_client_send_channel_anons(s, &s->channels[i].id, &s->channels[i].ticket);
-	}
-
+	rnm_send_id(s);
 
 	if ((s->connect_cb != NULL) && (s->connect_cb_status == 0)) {
 		s->connect_cb_status = 1;
 		pthread_create(&s->connect_thread, NULL, &rnm_connect_cb_thread, (void*) s);
 	}
+
+	pthread_mutex_lock(&s->connect_mutex);
+	s->connect_wait = 0;
+	pthread_cond_signal(&s->connect_cond);
+	pthread_mutex_unlock(&s->connect_mutex);
 
 	FD_ZERO(&set);
 	FD_SET(socketfd, &set);
@@ -539,11 +564,18 @@ static void rnm_recv(struct rnm_connect * s)
 			buffer_recv = buffer_recv - buffer_head;
 		} else buffer_recv = 0;
 	}
+	s->ready = 0;
 }
 
 void *rnm_connect_thread(void *server)
 {
 	struct rnm_connect *s = server;
+
+	while ((s->addr[0] == 0) || (s->port == 0)) {
+		if (!rnm_find_server(s->addr, &s->port))
+			break;
+		rtsd_info("Still looking for tcp server");
+	}
 
 	rtsd_debug("start client thread");
 	while (!s->onexit) {
@@ -557,11 +589,119 @@ void *rnm_connect_thread(void *server)
 		rn_set_keepalive(s->socketfd, 30, 3);
 		fcntl(s->socketfd, F_SETFD, FD_CLOEXEC);
 		rnm_recv(s);
-		close(s->socketfd);
+		shutdown(s->socketfd, SHUT_RDWR);
 		s->socketfd = -1;
 		usleep(1000000);
 	}
 	return NULL;
+}
+
+static void rnm_udprecv(struct rnm_connect * s)
+{
+	int usocketfd = s->usocketfd;
+	fd_set set;
+	int res;
+
+	int read_size;
+	struct rnm_header *packet_header;
+	uint8_t buffer[RNM_CLIENT_BUFFER_SIZE];
+	struct sockaddr_in addr;
+	socklen_t addr_len;
+
+
+	rnm_send_id(s);
+
+	pthread_mutex_lock(&s->connect_mutex);
+	s->connect_wait = 0;
+	pthread_cond_signal(&s->connect_cond);
+	pthread_mutex_unlock(&s->connect_mutex);
+
+	FD_ZERO(&set);
+	FD_SET(usocketfd, &set);
+	rtsd_debug("start receive data");
+
+	s->ready = 1;
+	while (!s->onexit) {
+		res = select(usocketfd + 1, &set, NULL, NULL, NULL);
+		rtsd_debug("select return %d, errno %d, error[%s]", res, errno, strerror(errno));
+		if (res == 0) continue;
+		if ((res == -1) && (errno == EINTR)) {
+			continue;
+		}
+
+		addr_len = sizeof(struct sockaddr_in);
+		read_size = recvfrom(usocketfd, buffer, RNM_CLIENT_BUFFER_SIZE, 0, (struct sockaddr *) &addr, &addr_len);
+		if (read_size < (int) sizeof(struct rnm_header)) {
+			if (read_size == -1) {
+				if ((errno == EAGAIN) || (errno == EINTR))
+					continue;
+				rtsd_debug("exit with %i", errno);
+				break;
+			}
+			if (read_size == 0) {
+				break;
+			}
+			continue;
+		}
+		packet_header = (struct rnm_header *) (buffer);
+		if (packet_header->magic != RNM_PACKET_MAGIC) {
+			continue;
+		}
+		if (packet_header->magic_data != RNM_PACKET_MAGIC_DATA) {
+			continue;
+		}
+		packet_header->data_size &= RNM_VARIABLE_SIZE_MAXIMUM;
+		rnm_process_packet(s, packet_header, (char *) packet_header + sizeof(struct rnm_header));
+	}
+	s->ready = 0;
+
+}
+
+void *rnm_udpconnect_thread(void *server)
+{
+	struct rnm_connect *s = server;
+
+	while ((s->addr[0] == 0) || (s->port == 0)) {
+		if (!rnm_find_server(s->addr, &s->port))
+			break;
+		rtsd_info("Still looking for tcp server");
+	}
+	rtsd_debug("start client thread");
+	while (!s->onexit) {
+		s->usocketfd = rn_udpclient_open(s->addr, s->port, &s->saddr);
+		if (s->usocketfd < 0) {
+			// rtsd_error("could't open socket");
+			usleep(300000);
+			continue;
+		}
+		rn_set_nonblocking_socket(s->usocketfd, 1024 * 1024, 1024 * 1024);
+		fcntl(s->usocketfd, F_SETFD, FD_CLOEXEC);
+		rnm_udprecv(s);
+		close(s->usocketfd);
+		s->usocketfd = -1;
+		usleep(1000000);
+	}
+	return NULL;
+}
+
+int rnm_connect_wait(struct rnm_connect * s, int timeout)
+{
+	struct timespec to;
+
+	rtsd_debug("data ptr %p", s);
+	clock_gettime(CLOCK_MONOTONIC, &to);
+	to.tv_sec += timeout;
+
+	pthread_mutex_lock(&s->connect_mutex);
+	while (s->connect_wait) {
+		if (pthread_cond_timedwait(&s->connect_cond, &s->connect_mutex, &to) == ETIMEDOUT) {
+			pthread_mutex_unlock(&s->connect_mutex);
+			return -ETIMEDOUT;
+		}
+
+	}
+	pthread_mutex_unlock(&s->connect_mutex);
+	return 0;
 }
 
 static void rnm_connect_structure_init(struct rnm_connect * s)
@@ -581,11 +721,18 @@ static void rnm_connect_structure_init(struct rnm_connect * s)
 	pthread_mutex_init(&s->channellist_mutex, NULL);
 	pthread_cond_init(&s->ticket_cond, &attr);
 	pthread_mutex_init(&s->ticket_mutex, NULL);
+	pthread_cond_init(&s->connect_cond, &attr);
+	pthread_mutex_init(&s->connect_mutex, NULL);
 
 	s->socketfd = -1;
+	s->usocketfd = -1;
 	s->connect_cb = NULL;
 	s->connect_arg = NULL;
 	s->onexit = 0;
+	s->port = 0;
+	s->addr[0] = 0;
+	s->saddr_size = sizeof(struct sockaddr_in);
+	s->connect_wait = 1;
 	rtsd_debug("init structure");
 	for (i = 0; i < RNM_EVENT_MAXIMUM; i++) {
 		s->events[i].id.i[0] = -1;
@@ -595,7 +742,7 @@ static void rnm_connect_structure_init(struct rnm_connect * s)
 	}
 }
 
-struct rnm_connect *rnm_connect(const char *addr, int port, const char *id)
+struct rnm_connect *rnm_udpconnect(const char *addr, int port, const char *id)
 {
 	struct rnm_connect *s;
 
@@ -603,25 +750,41 @@ struct rnm_connect *rnm_connect(const char *addr, int port, const char *id)
 		return NULL;
 	rnm_connect_structure_init(s);
 
-	if (addr != NULL)
+	if (addr != NULL) {
 		strncpy(s->addr, addr, 20);
+		s->port = port;
+	}
 	if (id != NULL)
 		rnm_idstr(&s->id, id);
-	s->port = port;
-	rtsd_debug("create thread");
+	rtsd_debug("connecting to %s:%i create thread", addr, port);
+	pthread_create(&s->thread, NULL, &rnm_udpconnect_thread, (void*) s);
+	return s;
+}
+
+struct rnm_connect *rnm_connect(const char *addr, int port, const char *id, void (*cb)(void *), void *arg)
+{
+	struct rnm_connect *s;
+
+	if ((s = calloc(1, sizeof(struct rnm_connect))) == NULL)
+		return NULL;
+	rnm_connect_structure_init(s);
+
+	if (addr != NULL) {
+		strncpy(s->addr, addr, 20);
+		s->port = port;
+	}
+	if (id != NULL)
+		rnm_idstr(&s->id, id);
+	s->connect_cb = cb;
+	s->connect_arg = arg;
+	rtsd_debug("connecting to %s:%i create thread with data %p", addr, port, s);
 	pthread_create(&s->thread, NULL, &rnm_connect_thread, (void*) s);
 	return s;
 }
 
-struct rnm_connect *rnm_connect_subscribe(const char *addr, int port, const char *id, void (*cb)(void *), void *arg)
+struct rnm_connect *rnm_connect_simple(const char *addr, int port, const char *id)
 {
-	struct rnm_connect *s;
-
-	if ((s = rnm_connect(addr, port, id)) == NULL)
-		return NULL;
-	s->connect_cb = cb;
-	s->connect_arg = arg;
-	return s;
+	return rnm_connect(addr, port, id, NULL, NULL);
 }
 
 int rnm_wait_for_clientlist(struct rnm_connect *s, int timeout)
@@ -668,7 +831,7 @@ struct rnm_client_info *rnm_request_clientslist(struct rnm_connect *s, int *coun
 	s->clientlist_wait_packet = 0;
 	s->clientlist_wait = 1;
 
-	rn_blocking_send(s->socketfd, &packet, sizeof(struct rnm_header), MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, sizeof(struct rnm_header));
 	rtsd_debug("request clients info");
 
 	if (rnm_wait_for_clientlist(s, timeout))
@@ -680,8 +843,10 @@ struct rnm_client_info *rnm_request_clientslist(struct rnm_connect *s, int *coun
 
 void rnm_free_clientslist(struct rnm_connect *s)
 {
-	free(s->clients_info);
-	s->clients_info = NULL;
+	if (s->clients_info != NULL) {
+		free(s->clients_info);
+		s->clients_info = NULL;
+	}
 }
 
 int rnm_wait_for_eventlist(struct rnm_connect *s, int timeout)
@@ -728,7 +893,7 @@ struct rnm_event_info *rnm_request_eventslist(struct rnm_connect *s, int *count,
 	s->eventlist_wait_packet = 0;
 	s->eventlist_wait = 1;
 
-	rn_blocking_send(s->socketfd, &packet, sizeof(struct rnm_header), MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, sizeof(struct rnm_header));
 	rtsd_debug("request events info");
 
 	if (rnm_wait_for_eventlist(s, timeout))
@@ -740,13 +905,16 @@ struct rnm_event_info *rnm_request_eventslist(struct rnm_connect *s, int *count,
 
 void rnm_free_eventslist(struct rnm_connect *s)
 {
-	free(s->events_info);
-	s->events_info = NULL;
+	if (s->events_info != NULL) {
+		free(s->events_info);
+		s->events_info = NULL;
+	}
 }
 
 int rnm_isconnect(struct rnm_connect *s)
 {
-	if ((s == NULL) || (s->socketfd < 0)) return 0;
+	rtsd_debug("data ptr %p", s);
+	if ((s == NULL) || (s->ready == 0)) return 0;
 	else
 		return 1;
 }
@@ -756,7 +924,8 @@ void rnm_disconnect(struct rnm_connect *s)
 	s->onexit = 1;
 	if (s->connect_cb_status == 1)
 		pthread_cancel(s->connect_thread);
-	rn_tcpclient_close(s->socketfd);
+	shutdown(s->usocketfd, SHUT_WR);
+	shutdown(s->socketfd, SHUT_WR);
 	pthread_join(s->thread, NULL);
 	if (s->clients_info)
 		rnm_free_clientslist(s);
@@ -824,7 +993,7 @@ int rnm_channel_request(struct rnm_connect *s, const char *id, struct rnm_channe
 	packet.header.type = RNM_TYPE_CHANNEL | RNM_CHANNEL_REQUEST;
 	packet.header.data_size = 0;
 
-	rn_blocking_send(s->socketfd, &packet, size, MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, size);
 	rtsd_debug("sent request");
 	if (rnm_wait_for_ticket(s, 3))
 		return -ETIMEDOUT;
@@ -882,7 +1051,7 @@ struct rnm_channel_info *rnm_request_channelslist(struct rnm_connect *s, int *co
 	s->channellist_wait_packet = 0;
 	s->channellist_wait = 1;
 
-	rn_blocking_send(s->socketfd, &packet, sizeof(struct rnm_header), MSG_NOSIGNAL);
+	rnm_connect_send(s, &packet, sizeof(struct rnm_header));
 	rtsd_debug("request channels info");
 
 	if (rnm_wait_for_channellist(s, timeout))
@@ -905,9 +1074,9 @@ void rnm_free_channelslist(struct rnm_connect *s)
 	}
 }
 
-int rnm_ssdp_msearch (char *buffer, int size)
+int rnm_ssdp_msearch(char *buffer, int size)
 {
-	return (snprintf(buffer, size, "%sHOST:%s:%d\r\nMAN:\"ssdp:discover\"\r\nMX:1\r\nST:%s\r\nUSER-AGENT:unknow\r\n\r\n",
+	return(snprintf(buffer, size, "%sHOST:%s:%d\r\nMAN:\"ssdp:discover\"\r\nMX:1\r\nST:%s\r\nUSER-AGENT:unknow\r\n\r\n",
 		ssdp_headers.msearch, ssdp_network.ip, ssdp_network.port, rnm_ssdp_field.name));
 }
 
@@ -916,53 +1085,55 @@ int rnm_find_server(char *addr, int *port)
 	int fd;
 	struct sockaddr_in gaddr;
 	struct sockaddr_in ssdp_server_addr;
-	socklen_t ssdp_server_addr_len = sizeof (struct sockaddr_in);
+	socklen_t ssdp_server_addr_len = sizeof(struct sockaddr_in);
 	char ssdp_buffer[SSDP_PACKET_SIZE];
 	int packet_size = 0;
 	int ssdp_response_size = strlen(ssdp_headers.response);
 	char *location;
 	int addr_count = 0;
 	int _port = 0;
-	
+
 	fd = rn_udpmulticast_open(NULL, ssdp_network.port);
-	rn_add_multicast_group (fd, ssdp_network.ip, NULL);
-	rn_set_multicast_group (&gaddr, ssdp_network.ip, ssdp_network.port);
+	rn_add_multicast_group(fd, ssdp_network.ip, NULL);
+	rn_set_multicast_group(&gaddr, ssdp_network.ip, ssdp_network.port);
 	rn_set_rxtimeout(fd, 0, 500000);
-	
-	packet_size = rnm_ssdp_msearch (ssdp_buffer, SSDP_PACKET_SIZE);
-	sendto (fd, ssdp_buffer, packet_size, 0, (struct sockaddr *) &gaddr,  sizeof(struct sockaddr_in));
-			
+
+	packet_size = rnm_ssdp_msearch(ssdp_buffer, SSDP_PACKET_SIZE);
+	sendto(fd, ssdp_buffer, packet_size, 0, (struct sockaddr *) &gaddr, sizeof(struct sockaddr_in));
+
 	while (1) {
 		rtsd_debug("wait for ssdp packet");
 		packet_size = recvfrom(fd, ssdp_buffer, SSDP_PACKET_SIZE, 0, (struct sockaddr *) &ssdp_server_addr, &ssdp_server_addr_len);
 		if (packet_size < 0) break;
 		if (packet_size < ssdp_response_size) continue;
-		
 		if (memcmp(ssdp_buffer, ssdp_headers.response, ssdp_response_size))
 			continue;
 		if (strstr(ssdp_buffer, rnm_ssdp_field.name) == NULL)
 			continue;
-		location = strstr(ssdp_buffer,"LOCATION:");
-		if (location == NULL) 
+		location = strstr(ssdp_buffer, "LOCATION:");
+		if (location == NULL)
 			continue;
 		while (*location != ':') location++;
 		location++;
+		addr_count = 0;
 		while (*location != ':') {
 			*addr++ = *location++;
-			if (addr_count>INET_ADDRSTRLEN) 
+			addr_count++;
+			if (addr_count > INET_ADDRSTRLEN)
 				break;
 		}
 		location++;
-		while (isdigit (*location)) {
+		while (isdigit(*location)) {
 			_port *= 10;
 			_port += *location - '0';
 			location++;
 		}
 		*port = _port;
 		inet_ntop(AF_INET, &(ssdp_server_addr.sin_addr), addr, INET_ADDRSTRLEN);
-		rn_udpserver_close (fd);
+		rn_udpserver_close(fd);
 		return 0;
 	}
-	rn_udpserver_close (fd);
+	rn_udpserver_close(fd);
 	return -1;
 }
+
